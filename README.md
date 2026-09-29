@@ -35,7 +35,7 @@ Copy `src/appsettings-example.json` to `src/appsettings.json`, then fill in the 
 
 `appsettings.json` is ignored by Git. The `Days`, `OutputDirectory`, `OutputOverwrite`, `EmailAddress`, `EmailFolders`, and `EmailReadOnly` settings control the backup:
 
-- `Days`: rolling period of 1 to 3650 days, ending at the time of execution.
+- `Days`: rolling period of 1 to 3650 days, ending at the time of execution. Calendar requests are split into windows of at most 1825 days, as required by Microsoft Graph.
 - `OutputDirectory`: root directory for the output. Relative paths are resolved from the current working directory.
 - `OutputOverwrite`: when `true`, replace existing `.eml` and `.ics` files with matching names; when `false`, skip exporting an item if its output file already exists.
 - `EmailAddress`: mailbox to back up.
@@ -53,6 +53,8 @@ dotnet run --project src -- --config src/appsettings.json
 The only command-line option is `--config`, which specifies the path to the JSON configuration file.
 
 Emails are exported under `email/<folder>/<year>/` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml` (for example, `email/inbox/2026/` and `email/sent/2026/`). Non-cancelled calendar events within the configured period are exported individually to `calendars/<year>/` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`.
+
+If Microsoft Graph cannot convert a particular message to MIME (`ErrorMimeContentConversionFailed`), that email is reported as failed and the backup continues with the remaining messages. Failures exporting individual emails or calendar events are logged with the item's date, time, and subject. The run exits with an error status and identifies the incomplete backup; the affected item must be handled separately.
 
 For scheduled execution on a Synology NAS, see the [Synology Task Scheduler guide](SYNOLOGY.md).
 

@@ -94,7 +94,37 @@ internal sealed class GraphReadClient(HttpClient httpClient, TokenCredential cre
         }
 
         var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new HttpRequestException(
+        throw new GraphRequestException(
+            response.StatusCode,
+            GetGraphErrorCode(detail),
             $"Microsoft Graph returned {(int)response.StatusCode} ({response.ReasonPhrase}): {detail}");
     }
+
+    private static string? GetGraphErrorCode(string detail)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(detail);
+            return document.RootElement.ValueKind == JsonValueKind.Object &&
+                   document.RootElement.TryGetProperty("error", out var error) &&
+                   error.ValueKind == JsonValueKind.Object &&
+                   error.TryGetProperty("code", out var code) &&
+                   code.ValueKind == JsonValueKind.String
+                ? code.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
+
+internal sealed class GraphRequestException(
+    HttpStatusCode statusCode,
+    string? graphErrorCode,
+    string message)
+    : HttpRequestException(message, null, statusCode)
+{
+    public string? GraphErrorCode { get; } = graphErrorCode;
 }

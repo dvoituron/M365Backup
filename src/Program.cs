@@ -30,11 +30,19 @@ internal static class Program
             var result = await service.RunAsync(configuration, cancellation.Token);
 
             Console.WriteLine();
-            Console.WriteLine($"Backup completed: {result.OutputDirectory}");
+            var failedItemCount = result.FailedEmailCount + result.FailedEventCount;
+            Console.WriteLine(failedItemCount == 0
+                ? $"Backup completed: {result.OutputDirectory}"
+                : $"Backup completed with errors: {result.OutputDirectory}");
             Console.WriteLine($"Mailbox: {result.EmailAddress}");
             Console.WriteLine($"Emails EML: {result.EmailCount}");
             Console.WriteLine($"ICS events: {result.EventCount}");
-            return 0;
+            if (result.FailedEmailCount > 0 || result.FailedEventCount > 0)
+            {
+                Console.Error.WriteLine($"Items that could not be exported: {failedItemCount}");
+            }
+
+            return failedItemCount == 0 ? 0 : 1;
         }
         catch (OperationCanceledException)
         {
