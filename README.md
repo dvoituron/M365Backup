@@ -37,7 +37,7 @@ Copy `src/appsettings-example.json` to `src/appsettings.json`, then fill in the 
 
 - `Days`: rolling period of 1 to 3650 days, ending at the time of execution.
 - `OutputDirectory`: root directory for the output. Relative paths are resolved from the current working directory.
-- `OutputOverwrite`: when `true`, replace files with matching names; when `false`, add a numeric suffix to avoid overwriting.
+- `OutputOverwrite`: when `true`, replace existing `.eml` and `.ics` files with matching names; when `false`, skip exporting an item if its output file already exists.
 - `EmailAddress`: mailbox to back up.
 - `EmailFolders`: mail folders to export. Each entry name becomes a lowercase subdirectory under `email/`; `FolderId` is the Microsoft Graph mail-folder ID, and `DateProperty` is the message date field used for both filtering and filenames.
 - `EmailReadOnly`: when `true`, export only read emails; when `false`, export all emails. This setting does not apply to the calendar.

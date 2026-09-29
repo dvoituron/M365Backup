@@ -69,6 +69,7 @@ internal sealed class BackupService(GraphReadClient graph)
             var url =
                 $"{userPath}/mailFolders/{Uri.EscapeDataString(folder.FolderId)}/messages?$select=id,subject,{folder.DateProperty}&$filter={Uri.EscapeDataString(filter)}&$top=50";
             var folderCount = 0;
+            var skippedCount = 0;
             await foreach (var message in graph.GetCollectionAsync(url, cancellationToken))
             {
                 var id = RequiredString(message, "id");
@@ -78,6 +79,12 @@ internal sealed class BackupService(GraphReadClient graph)
                         $"Message {id} in the {name} folder does not contain the {folder.DateProperty} date.");
                 var filename = $"{messageDate.ToString("yyMMdd-HHmmss", CultureInfo.InvariantCulture)}-{SanitizeFileName(subject)}.eml";
                 var messagePath = GetOutputPath(destination, filename, outputOverwrite);
+                if (messagePath is null)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
                 var temporaryPath = Path.Combine(destination, $".{Guid.NewGuid():N}.tmp");
 
                 try
@@ -100,7 +107,9 @@ internal sealed class BackupService(GraphReadClient graph)
                 count++;
             }
 
-            Console.WriteLine($"{name}: {folderCount} email(s) copied");
+            Console.WriteLine(
+                $"{name}: {folderCount} email(s) copied" +
+                (skippedCount > 0 ? $", {skippedCount} existing email(s) skipped" : ""));
         }
 
         return count;
@@ -121,6 +130,7 @@ internal sealed class BackupService(GraphReadClient graph)
             "&$select=id,iCalUId,subject,start,end,isAllDay,body,location,organizer,attendees,isCancelled&$top=50";
 
         var count = 0;
+        var skippedCount = 0;
         await foreach (var calendarEvent in graph.GetCollectionAsync(url, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -135,11 +145,19 @@ internal sealed class BackupService(GraphReadClient graph)
                 ?? throw new InvalidOperationException($"Event {id} does not contain a start date.");
             var filename = $"{startDate:yyMMdd}-{SanitizeFileName(subject)}.ics";
             var path = GetOutputPath(destination, filename, outputOverwrite);
+            if (path is null)
+            {
+                skippedCount++;
+                continue;
+            }
+
             await IcsWriter.WriteEventAsync(path, calendarEvent, cancellationToken);
             count++;
         }
 
-        Console.WriteLine($"Calendar: {count} event(s) exported");
+        Console.WriteLine(
+            $"Calendar: {count} event(s) exported" +
+            (skippedCount > 0 ? $", {skippedCount} existing event(s) skipped" : ""));
         return count;
     }
 
@@ -199,24 +217,10 @@ internal sealed class BackupService(GraphReadClient graph)
         return string.IsNullOrWhiteSpace(safe) ? "no-subject" : safe;
     }
 
-    private static string GetOutputPath(string directory, string filename, bool overwrite)
+    private static string? GetOutputPath(string directory, string filename, bool overwrite)
     {
         var path = Path.Combine(directory, filename);
-        if (overwrite || !File.Exists(path))
-        {
-            return path;
-        }
-
-        var name = Path.GetFileNameWithoutExtension(filename);
-        var extension = Path.GetExtension(filename);
-        for (var suffix = 2; ; suffix++)
-        {
-            path = Path.Combine(directory, $"{name}-{suffix}{extension}");
-            if (!File.Exists(path))
-            {
-                return path;
-            }
-        }
+        return overwrite || !File.Exists(path) ? path : null;
     }
 }
 
