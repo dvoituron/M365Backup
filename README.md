@@ -8,32 +8,48 @@ The application uses **application** authentication (client credentials). Config
 
 ## Configuration
 
-Copy `appsettings.example.json` to `appsettings.json`, then fill in:
+Copy `src/appsettings-example.json` to `src/appsettings.json`, then fill in the credentials and backup settings:
 
 ```json
 {
   "TenantId": "<Tenant ID>",
   "ClientId": "<Application (client) ID>",
   "ClientSecret": "<client secret value>",
-  "EmailAddress": "<mailbox address to back up>"
+  "Days": 30,
+  "OutputDirectory": "C:/_Temp/M365",
+  "OutputOverwrite": false,
+  "EmailAddress": "<mailbox address to back up>",
+  "EmailFolders": {
+    "Inbox": {
+      "FolderId": "inbox",
+      "DateProperty": "receivedDateTime"
+    },
+    "SentItems": {
+      "FolderId": "sentitems",
+      "DateProperty": "sentDateTime"
+    }
+  },
+  "EmailReadOnly": false
 }
 ```
 
-`appsettings.json` is ignored by Git. You can also pass the path to another file with `--config`.
+`appsettings.json` is ignored by Git. The `Days`, `OutputDirectory`, `OutputOverwrite`, `EmailAddress`, `EmailFolders`, and `EmailReadOnly` settings control the backup:
+
+- `Days`: rolling period of 1 to 3650 days, ending at the time of execution.
+- `OutputDirectory`: root directory for the output. Relative paths are resolved from the current working directory.
+- `OutputOverwrite`: when `true`, replace files with matching names; when `false`, add a numeric suffix to avoid overwriting.
+- `EmailAddress`: mailbox to back up.
+- `EmailFolders`: mail folders to export. Each entry name becomes a lowercase subdirectory under `email/`; `FolderId` is the Microsoft Graph mail-folder ID, and `DateProperty` is the message date field used for both filtering and filenames.
+- `EmailReadOnly`: when `true`, export only unread emails. This setting does not apply to the calendar.
 
 ## Usage
 
-From this directory:
+From the repository root:
 
 ```powershell
-dotnet run -- --config appsettings.json --days 30 --output C:\Backup\M365 --unread-only false
+dotnet run --project src -- --config src/appsettings.json
 ```
 
-Options:
+The only command-line option is `--config`, which specifies the path to the JSON configuration file.
 
-- `--config`: path to the configuration JSON file.
-- `--days`: rolling period of 1 to 3650 days, ending at the time of execution.
-- `--output`: output root directory.
-- `--unread-only`: `true` to copy only unread emails; defaults to `false`. This filter does not apply to the calendar.
-
-Emails are exported to `email/inbox` and `email/sent` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml`. Non-cancelled calendar events within the period are exported individually to `calendars` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`. If multiple items have the same name, a numeric suffix is added to prevent overwriting.
+Emails are exported under `email/` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml`. Non-cancelled calendar events within the configured period are exported individually to `calendars/` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`.

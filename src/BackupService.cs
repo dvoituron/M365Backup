@@ -6,66 +6,68 @@ namespace M365Backup;
 internal sealed class BackupService(GraphReadClient graph)
 {
     public async Task<BackupResult> RunAsync(
-        CliOptions options,
-        string emailAddress,
+        AppCredentials configuration,
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var cutoff = now.AddDays(-options.Days);
-        var outputDirectory = Path.GetFullPath(options.OutputDirectory);
+        var cutoff = now.AddDays(-configuration.Days);
+        var outputDirectory = Path.GetFullPath(configuration.OutputDirectory);
         if (File.Exists(outputDirectory))
         {
             throw new IOException($"The destination path exists but is not a directory: {outputDirectory}");
         }
 
         var emailDirectory = Path.Combine(outputDirectory, "email");
-        var inboxDirectory = Path.Combine(emailDirectory, "inbox");
-        var sentDirectory = Path.Combine(emailDirectory, "sent");
         var calendarDirectory = Path.Combine(outputDirectory, "calendars");
-        Directory.CreateDirectory(inboxDirectory);
-        Directory.CreateDirectory(sentDirectory);
+        Directory.CreateDirectory(emailDirectory);
         Directory.CreateDirectory(calendarDirectory);
 
-        var userPath = $"users/{Uri.EscapeDataString(emailAddress)}";
-        Console.WriteLine($"Target mailbox: {emailAddress}");
+        var userPath = $"users/{Uri.EscapeDataString(configuration.EmailAddress)}";
+        Console.WriteLine($"Target mailbox: {configuration.EmailAddress}");
         Console.WriteLine($"Period: {cutoff:yyyy-MM-dd HH:mm:ss} UTC to {now:yyyy-MM-dd HH:mm:ss} UTC");
         Console.WriteLine($"Destination: {outputDirectory}");
 
         var emailCount = await BackupEmailsAsync(
             userPath,
-            inboxDirectory,
-            sentDirectory,
+            emailDirectory,
+            configuration.EmailFolders,
             cutoff,
-            options.UnreadOnly,
+            configuration.EmailReadOnly,
+            configuration.OutputOverwrite,
             cancellationToken);
-        var eventCount = await BackupCalendarAsync(userPath, calendarDirectory, cutoff, now, cancellationToken);
+        var eventCount = await BackupCalendarAsync(
+            userPath,
+            calendarDirectory,
+            cutoff,
+            now,
+            configuration.OutputOverwrite,
+            cancellationToken);
 
-        return new BackupResult(outputDirectory, emailAddress, cutoff, emailCount, eventCount);
+        return new BackupResult(outputDirectory, configuration.EmailAddress, cutoff, emailCount, eventCount);
     }
 
     private async Task<int> BackupEmailsAsync(
         string userPath,
-        string inboxDirectory,
-        string sentDirectory,
+        string emailDirectory,
+        IReadOnlyDictionary<string, EmailFolderConfiguration> folders,
         DateTimeOffset cutoff,
-        bool unreadOnly,
+        bool emailReadOnly,
+        bool outputOverwrite,
         CancellationToken cancellationToken)
     {
         var count = 0;
-        foreach (var folder in new[]
+        foreach (var (name, folder) in folders)
         {
-            (Name: "Inbox", Id: "inbox", DateProperty: "receivedDateTime", Destination: inboxDirectory),
-            (Name: "Sent", Id: "sentitems", DateProperty: "sentDateTime", Destination: sentDirectory)
-        })
-        {
+            var destination = Path.Combine(emailDirectory, name.ToLowerInvariant());
+            Directory.CreateDirectory(destination);
             var filter = $"{folder.DateProperty} ge {cutoff.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}";
-            if (unreadOnly)
+            if (emailReadOnly)
             {
                 filter += " and isRead eq false";
             }
 
             var url =
-                $"{userPath}/mailFolders/{folder.Id}/messages?$select=id,subject,receivedDateTime,sentDateTime&$filter={Uri.EscapeDataString(filter)}&$top=50";
+                $"{userPath}/mailFolders/{Uri.EscapeDataString(folder.FolderId)}/messages?$select=id,subject,{folder.DateProperty}&$filter={Uri.EscapeDataString(filter)}&$top=50";
             var folderCount = 0;
             await foreach (var message in graph.GetCollectionAsync(url, cancellationToken))
             {
@@ -73,10 +75,10 @@ internal sealed class BackupService(GraphReadClient graph)
                 var subject = GetString(message, "subject") ?? "no-subject";
                 var messageDate = GetDateTime(message, folder.DateProperty)
                     ?? throw new InvalidOperationException(
-                        $"Message {id} in the {folder.Name} folder does not contain the {folder.DateProperty} date.");
+                        $"Message {id} in the {name} folder does not contain the {folder.DateProperty} date.");
                 var filename = $"{messageDate.ToString("yyMMdd-HHmmss", CultureInfo.InvariantCulture)}-{SanitizeFileName(subject)}.eml";
-                var destination = GetUniquePath(folder.Destination, filename);
-                var temporaryPath = Path.Combine(folder.Destination, $".{Guid.NewGuid():N}.tmp");
+                var messagePath = GetOutputPath(destination, filename, outputOverwrite);
+                var temporaryPath = Path.Combine(destination, $".{Guid.NewGuid():N}.tmp");
 
                 try
                 {
@@ -84,7 +86,7 @@ internal sealed class BackupService(GraphReadClient graph)
                         $"{userPath}/messages/{Uri.EscapeDataString(id)}/$value",
                         temporaryPath,
                         cancellationToken);
-                    File.Move(temporaryPath, destination);
+                    File.Move(temporaryPath, messagePath, outputOverwrite);
                 }
                 finally
                 {
@@ -98,7 +100,7 @@ internal sealed class BackupService(GraphReadClient graph)
                 count++;
             }
 
-            Console.WriteLine($"{folder.Name}: {folderCount} email(s) copied");
+            Console.WriteLine($"{name}: {folderCount} email(s) copied");
         }
 
         return count;
@@ -109,6 +111,7 @@ internal sealed class BackupService(GraphReadClient graph)
         string destination,
         DateTimeOffset cutoff,
         DateTimeOffset now,
+        bool outputOverwrite,
         CancellationToken cancellationToken)
     {
         var start = Uri.EscapeDataString(cutoff.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture));
@@ -131,7 +134,7 @@ internal sealed class BackupService(GraphReadClient graph)
             var startDate = GetEventDate(calendarEvent, "start")
                 ?? throw new InvalidOperationException($"Event {id} does not contain a start date.");
             var filename = $"{startDate:yyMMdd}-{SanitizeFileName(subject)}.ics";
-            var path = GetUniquePath(destination, filename);
+            var path = GetOutputPath(destination, filename, outputOverwrite);
             await IcsWriter.WriteEventAsync(path, calendarEvent, cancellationToken);
             count++;
         }
@@ -196,10 +199,10 @@ internal sealed class BackupService(GraphReadClient graph)
         return string.IsNullOrWhiteSpace(safe) ? "no-subject" : safe;
     }
 
-    private static string GetUniquePath(string directory, string filename)
+    private static string GetOutputPath(string directory, string filename, bool overwrite)
     {
         var path = Path.Combine(directory, filename);
-        if (!File.Exists(path))
+        if (overwrite || !File.Exists(path))
         {
             return path;
         }

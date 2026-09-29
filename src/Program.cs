@@ -11,17 +11,11 @@ internal static class Program
         try
         {
             var options = CliOptions.Parse(args);
-            if (options.ShowHelp)
-            {
-                CliOptions.PrintHelp();
-                return 0;
-            }
-
-            var credentials = AppCredentials.Load(options.ConfigPath);
+            var configuration = AppCredentials.Load(options.ConfigPath);
             var credential = new ClientSecretCredential(
-                credentials.TenantId,
-                credentials.ClientId,
-                credentials.ClientSecret);
+                configuration.TenantId,
+                configuration.ClientId,
+                configuration.ClientSecret);
 
             using var cancellation = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
@@ -33,12 +27,12 @@ internal static class Program
             using var httpClient = new HttpClient();
             var graph = new GraphReadClient(httpClient, credential, Scopes);
             var service = new BackupService(graph);
-            var result = await service.RunAsync(options, credentials.EmailAddress, cancellation.Token);
+            var result = await service.RunAsync(configuration, cancellation.Token);
 
             Console.WriteLine();
             Console.WriteLine($"Backup completed: {result.OutputDirectory}");
             Console.WriteLine($"Mailbox: {result.EmailAddress}");
-            Console.WriteLine($"Emails EML : {result.EmailCount}");
+            Console.WriteLine($"Emails EML: {result.EmailCount}");
             Console.WriteLine($"ICS events: {result.EventCount}");
             return 0;
         }
