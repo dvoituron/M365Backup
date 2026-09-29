@@ -39,7 +39,7 @@ Copy `src/appsettings-example.json` to `src/appsettings.json`, then fill in the 
 - `OutputDirectory`: root directory for the output. Relative paths are resolved from the current working directory.
 - `OutputOverwrite`: when `true`, replace existing `.eml` and `.ics` files with matching names; when `false`, skip exporting an item if its output file already exists.
 - `EmailAddress`: mailbox to back up.
-- `EmailFolders`: mail folders to export. Each entry name becomes a lowercase subdirectory under `email/`; `FolderId` is the Microsoft Graph mail-folder ID, and `DateProperty` is the message date field used for both filtering and filenames.
+- `EmailFolders`: mail folders to export. Each entry is saved under `email/<folder>/<year>/`; folder names use the lowercase entry name, except `SentItems`, which is saved under `email/sent/`. `FolderId` is the Microsoft Graph mail-folder ID, and `DateProperty` is the message date field used for filtering, filenames, and year directories.
 - `EmailReadOnly`: when `true`, export only read emails; when `false`, export all emails. This setting does not apply to the calendar.
 
 ## Usage
@@ -52,7 +52,7 @@ dotnet run --project src -- --config src/appsettings.json
 
 The only command-line option is `--config`, which specifies the path to the JSON configuration file.
 
-Emails are exported under `email/` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml`. Non-cancelled calendar events within the configured period are exported individually to `calendars/` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`.
+Emails are exported under `email/<folder>/<year>/` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml` (for example, `email/inbox/2026/` and `email/sent/2026/`). Non-cancelled calendar events within the configured period are exported individually to `calendars/<year>/` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`.
 
 ## Set up the Entra application: step by step
 

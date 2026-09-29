@@ -58,8 +58,9 @@ internal sealed class BackupService(GraphReadClient graph)
         var count = 0;
         foreach (var (name, folder) in folders)
         {
-            var destination = Path.Combine(emailDirectory, name.ToLowerInvariant());
-            Directory.CreateDirectory(destination);
+            var folderDirectoryName = name.Equals("SentItems", StringComparison.OrdinalIgnoreCase)
+                ? "sent"
+                : name.ToLowerInvariant();
             var filter = $"{folder.DateProperty} ge {cutoff.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}";
             if (emailReadOnly)
             {
@@ -78,6 +79,8 @@ internal sealed class BackupService(GraphReadClient graph)
                     ?? throw new InvalidOperationException(
                         $"Message {id} in the {name} folder does not contain the {folder.DateProperty} date.");
                 var filename = $"{messageDate.ToString("yyMMdd-HHmmss", CultureInfo.InvariantCulture)}-{SanitizeFileName(subject)}.eml";
+                var destination = Path.Combine(emailDirectory, folderDirectoryName, messageDate.Year.ToString(CultureInfo.InvariantCulture));
+                Directory.CreateDirectory(destination);
                 var messagePath = GetOutputPath(destination, filename, outputOverwrite);
                 if (messagePath is null)
                 {
@@ -144,7 +147,9 @@ internal sealed class BackupService(GraphReadClient graph)
             var startDate = GetEventDate(calendarEvent, "start")
                 ?? throw new InvalidOperationException($"Event {id} does not contain a start date.");
             var filename = $"{startDate:yyMMdd}-{SanitizeFileName(subject)}.ics";
-            var path = GetOutputPath(destination, filename, outputOverwrite);
+            var yearDirectory = Path.Combine(destination, startDate.Year.ToString(CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(yearDirectory);
+            var path = GetOutputPath(yearDirectory, filename, outputOverwrite);
             if (path is null)
             {
                 skippedCount++;
