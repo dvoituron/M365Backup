@@ -54,6 +54,8 @@ The only command-line option is `--config`, which specifies the path to the JSON
 
 Emails are exported under `email/<folder>/<year>/` in MIME `.eml` format, using the filename pattern `yyMMdd-HHmmss-Subject.eml` (for example, `email/inbox/2026/` and `email/sent/2026/`). Non-cancelled calendar events within the configured period are exported individually to `calendars/<year>/` in `.ics` format, using the filename pattern `yyMMdd-Subject.ics`.
 
+For scheduled execution on a Synology NAS, see the [Synology Task Scheduler guide](SYNOLOGY.md).
+
 ## Set up the Entra application: step by step
 
 You need access to the Microsoft Entra admin center and an administrator who can grant tenant-wide consent to application permissions.
