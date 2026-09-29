@@ -63,7 +63,7 @@ internal sealed class BackupService(GraphReadClient graph)
             var filter = $"{folder.DateProperty} ge {cutoff.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}";
             if (emailReadOnly)
             {
-                filter += " and isRead eq false";
+                filter += " and isRead eq true";
             }
 
             var url =
